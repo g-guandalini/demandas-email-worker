@@ -1,0 +1,16 @@
+[Unit]
+Description=Worker de solicitações por e-mail para Codex
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Projetos/demandas-email-worker
+ExecStart=/usr/bin/python3 %h/Projetos/demandas-email-worker/worker.py run
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

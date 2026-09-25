@@ -1,0 +1,30 @@
+# Credenciais e configurações locais
+.env
+.env.*
+!.env.example
+config.json
+config.local.json
+.agents/
+.codex/
+
+# Estado do worker e solicitações privadas
+__pycache__/
+.venv/
+venv/
+env/
+data/
+solicitacoes/
+worktrees/
+
+# Logs e arquivos temporários de ferramentas
+*.log
+*.tmp
+*.sqlite
+*.sqlite3
+*.db
+.DS_Store
+Thumbs.db
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
