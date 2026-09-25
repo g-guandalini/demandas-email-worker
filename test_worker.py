@@ -1,9 +1,10 @@
 import unittest
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
-from worker import project_path, response_command
+from worker import project_path, response_command, run_codex
 
 
 REQUEST_ID = "DEM-20260924-C76EEED1"
@@ -55,6 +56,30 @@ class ProjectPathTests(unittest.TestCase):
             with patch("worker.config", return_value=settings):
                 with self.assertRaises(ValueError):
                     project_path("exemplo")
+
+
+class CodexCommandTests(unittest.TestCase):
+    def invoke_codex(self, auto_approve, sandbox):
+        result = SimpleNamespace(returncode=0, stdout="ok\n", stderr="")
+        with patch.dict("os.environ", {"CODEX_BIN": "codex"}), patch("worker.subprocess.run", return_value=result) as run:
+            output = run_codex(Path("/tmp/project"), "prompt", sandbox, auto_approve=auto_approve)
+        return output, run.call_args.args[0]
+
+    def test_read_only_mode_keeps_explicit_sandbox(self):
+        output, command = self.invoke_codex(False, "read-only")
+        self.assertEqual(output, "ok")
+        self.assertIn(["--sandbox", "read-only"], [command[index:index + 2] for index in range(len(command) - 1)])
+        self.assertNotIn("--approve-for-me", command)
+
+    def test_auto_review_uses_its_own_workspace_write_sandbox(self):
+        output, command = self.invoke_codex(True, "workspace-write")
+        self.assertEqual(output, "ok")
+        self.assertIn("--approve-for-me", command)
+        self.assertNotIn("--sandbox", command)
+
+    def test_auto_review_rejects_other_sandbox_modes(self):
+        with self.assertRaises(ValueError):
+            run_codex(Path("/tmp/project"), "prompt", "danger-full-access", auto_approve=True)
 
 
 if __name__ == "__main__":

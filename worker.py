@@ -178,9 +178,15 @@ def run_codex(
 ) -> str:
     load_env()
     executable = os.environ.get("CODEX_BIN", "codex")
-    command = [executable, "exec", "--ephemeral", "--sandbox", sandbox, "-C", str(project_dir), "-"]
     if auto_approve:
-        command.insert(-1, "--approve-for-me")
+        if sandbox != "workspace-write":
+            raise ValueError("A aprovação automática só pode ser usada com sandbox workspace-write")
+        # --approve-for-me já seleciona workspace-write e é incompatível com
+        # --sandbox explícito nas versões atuais do Codex CLI.
+        command = [executable, "exec", "--ephemeral", "--approve-for-me"]
+    else:
+        command = [executable, "exec", "--ephemeral", "--sandbox", sandbox]
+    command.extend(["-C", str(project_dir), "-"])
     result = subprocess.run(command, input=prompt, text=True, capture_output=True, timeout=timeout, check=False)
     if result.returncode:
         detail = (result.stderr or result.stdout)[-6000:]
