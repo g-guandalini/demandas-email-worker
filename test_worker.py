@@ -4,7 +4,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from worker import project_path, response_command, run_codex
+from worker import (
+    build_implementation_prompt,
+    ensure_worktree_changes,
+    project_path,
+    response_command,
+    run_codex,
+    set_status,
+)
 
 
 REQUEST_ID = "DEM-20260924-C76EEED1"
@@ -80,6 +87,31 @@ class CodexCommandTests(unittest.TestCase):
     def test_auto_review_rejects_other_sandbox_modes(self):
         with self.assertRaises(ValueError):
             run_codex(Path("/tmp/project"), "prompt", "danger-full-access", auto_approve=True)
+
+
+class ImplementationPromptTests(unittest.TestCase):
+    def test_prompt_embeds_specification_without_external_path_dependency(self):
+        request = {"body": "Solicitação original"}
+        with patch("worker.workflow_instructions", return_value="Política global"):
+            prompt = build_implementation_prompt(
+                "DEM-20260924-C76EEED1", request, "feature/example", "Conteúdo integral da especificação"
+            )
+        self.assertIn("Conteúdo integral da especificação", prompt)
+        self.assertIn("Não tente abrir o arquivo original", prompt)
+        self.assertNotIn("/home/gustavo/Projetos/DEMANDAS/solicitacoes", prompt)
+
+    def test_no_changes_are_not_reported_as_an_implementation(self):
+        result = SimpleNamespace(stdout="", returncode=0)
+        with patch("worker.subprocess.run", return_value=result):
+            with self.assertRaisesRegex(RuntimeError, "sem alterar arquivos"):
+                ensure_worktree_changes(Path("/tmp/worktree"))
+
+    def test_status_transition_clears_stale_error(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            (folder / "status.json").write_text('{"status":"erro_implementacao","error":"anterior"}')
+            state = set_status(folder, "implementando")
+        self.assertNotIn("error", state)
 
 
 if __name__ == "__main__":
