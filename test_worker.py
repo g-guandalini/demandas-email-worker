@@ -232,21 +232,25 @@ class AnalysisPullTests(unittest.TestCase):
 class CodexCommandTests(unittest.TestCase):
     def invoke_codex(self, auto_approve, sandbox):
         result = SimpleNamespace(returncode=0, stdout="ok\n", stderr="")
-        with patch.dict("os.environ", {"CODEX_BIN": "codex"}), patch("worker.subprocess.run", return_value=result) as run:
+        with patch.dict("os.environ", {"CODEX_BIN": "codex", "CODEX_HOME": ""}), patch("worker.subprocess.run", return_value=result) as run:
             output = run_codex(Path("/tmp/project"), "prompt", sandbox, auto_approve=auto_approve)
-        return output, run.call_args.args[0]
+        return output, run.call_args.args[0], run.call_args.kwargs["env"]
 
     def test_read_only_mode_keeps_explicit_sandbox(self):
-        output, command = self.invoke_codex(False, "read-only")
+        output, command, child_env = self.invoke_codex(False, "read-only")
         self.assertEqual(output, "ok")
         self.assertIn(["--sandbox", "read-only"], [command[index:index + 2] for index in range(len(command) - 1)])
+        self.assertIn(["-c", "mcp_optional_startup_grace_ms=0"], [command[index:index + 2] for index in range(len(command) - 1)])
         self.assertNotIn("--approve-for-me", command)
+        self.assertEqual(child_env["CODEX_HOME"], str(Path.home() / ".codex"))
 
     def test_auto_review_uses_its_own_workspace_write_sandbox(self):
-        output, command = self.invoke_codex(True, "workspace-write")
+        output, command, child_env = self.invoke_codex(True, "workspace-write")
         self.assertEqual(output, "ok")
         self.assertIn("--approve-for-me", command)
         self.assertNotIn("--sandbox", command)
+        self.assertIn(["-c", "mcp_optional_startup_grace_ms=0"], [command[index:index + 2] for index in range(len(command) - 1)])
+        self.assertEqual(child_env["CODEX_HOME"], str(Path.home() / ".codex"))
 
     def test_auto_review_rejects_other_sandbox_modes(self):
         with self.assertRaises(ValueError):

@@ -65,6 +65,10 @@ Depois, continue em outra parte independente da tarefa, se houver.
 - Os servidores MCP já configurados no Codex estão autorizados para leitura de
   documentação, código, issues e metadados necessários à demanda. Em bancos,
   limite a consulta a schema e metadados; não leia dados pessoais ou de produção.
+- Quando a solicitação depender de um serviço externo, consulte o MCP habilitado
+  correspondente antes de concluir que a integração ou recurso não está
+  disponível no repositório. Se a conexão MCP falhar, registre o servidor e a
+  limitação no resultado e continue as partes independentes.
 - Alterações por MCP em serviços externos — incluindo editar/executar workflows,
   enviar mensagens, publicar, criar recursos ou alterar dados — só estão
   autorizadas quando constarem explicitamente na especificação aprovada. Aprovar

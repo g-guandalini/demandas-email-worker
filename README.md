@@ -45,6 +45,10 @@ No Linux, o agente desenvolvedor pode usar o daemon local pelo socket Unix. Conf
 
 O socket Docker permite controlar o daemon e os containers locais. Use somente com Docker de desenvolvimento/teste, conforme as restrições de `AGENTS.md`; não aponte essa configuração para daemon remoto ou de produção. No Windows, esta opção não libera Docker Desktop automaticamente.
 
+### MCPs no Codex não interativo
+
+O worker usa a configuração MCP global do mesmo usuário do Codex (`CODEX_HOME` ou `~/.codex`) e aguarda a inicialização dos servidores opcionais até o timeout configurado por servidor. Essa espera se aplica genericamente a todos os MCPs habilitados, incluindo servidores HTTP e STDIO. Nas análises, o agente deve consultar MCPs relevantes a integrações externas e registrar o servidor se a conexão falhar, em vez de inferir indisponibilidade apenas pela ausência de arquivos no repositório.
+
 #### Linux
 
 ```sh
