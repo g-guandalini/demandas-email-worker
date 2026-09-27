@@ -466,6 +466,39 @@ def send_email(subject: str, body: str, attachments: list[Path] | None = None) -
         smtp.send_message(message)
 
 
+def send_result_email(folder: Path, branch: str) -> bool:
+    """Send the completed report and persist its delivery state for recovery."""
+    result_path = folder / "resultado.md"
+    if not result_path.is_file():
+        raise ValueError(f"Relatório de implementação não encontrado: {result_path.name}")
+    set_status(folder, "implementado", completion_email_status="enviando", completion_email_error=None)
+    try:
+        send_email(
+            f"{folder.name}: implementação concluída",
+            implementation_completion_email(branch),
+            attachments=[result_path],
+        )
+    except Exception as exc:
+        error = str(exc)[-2000:]
+        set_status(
+            folder,
+            "implementado",
+            completion_email_status="falhou",
+            completion_email_error=error,
+        )
+        log_task(folder.name, f"falha no envio do relatório; use `python3 worker.py resend-result {folder.name}`: {error}")
+        return False
+    set_status(
+        folder,
+        "implementado",
+        completion_email_status="enviado",
+        completion_email_sent_at=datetime.now(timezone.utc).isoformat(),
+        completion_email_error=None,
+    )
+    log_task(folder.name, "e-mail de conclusão enviado com o relatório anexado")
+    return True
+
+
 def send_spec_email(folder: Path) -> None:
     request = json.loads((folder / "request.json").read_text(encoding="utf-8"))
     state = json.loads((folder / "status.json").read_text(encoding="utf-8"))
@@ -838,11 +871,7 @@ def implement(identifier: str) -> None:
     (folder / "resultado.md").write_text(report, encoding="utf-8")
     set_status(folder, "implementado", branch=branch, checkout_path=str(checkout))
     log_task(identifier, f"implementação concluída na branch {branch}, commit {implementation_commit}")
-    send_email(
-        f"{identifier}: implementação concluída",
-        implementation_completion_email(branch),
-        attachments=[folder / "resultado.md"],
-    )
+    send_result_email(folder, branch)
 
 
 def response_command(body: str) -> tuple[str, str, str] | None:
@@ -1051,6 +1080,19 @@ def retry_analysis(identifier: str) -> None:
     analyze(folder, additional_analysis=state.get("last_analysis") == "revisao")
 
 
+def resend_result(identifier: str) -> None:
+    folder = request_dir(identifier)
+    state = json.loads((folder / "status.json").read_text(encoding="utf-8"))
+    if state.get("status") != "implementado":
+        raise ValueError(f"A solicitação não está implementada (status: {state.get('status')})")
+    branch = state.get("branch")
+    if not branch:
+        raise ValueError("A solicitação não tem uma branch de trabalho registrada")
+    if not send_result_email(folder, branch):
+        raise RuntimeError("O reenvio do relatório falhou; consulte o status e o log do worker")
+    print(f"E-mail reenviado com o anexo: {folder / 'resultado.md'}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Worker de e-mail para análise e implementação assistidas pelo Codex")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1060,6 +1102,8 @@ def main() -> int:
     status_parser.add_argument("id")
     retry_parser = subparsers.add_parser("reanalyze", help="tenta novamente uma análise que falhou")
     retry_parser.add_argument("id")
+    result_parser = subparsers.add_parser("resend-result", help="reenvia o relatório de uma implementação concluída")
+    result_parser.add_argument("id")
     resend_parser = subparsers.add_parser("resend-spec", help="reenvia uma especificação pendente como anexo Markdown")
     resend_parser.add_argument("id")
     args = parser.parse_args()
@@ -1068,6 +1112,8 @@ def main() -> int:
             show_status(args.id.upper())
         elif args.command == "reanalyze":
             retry_analysis(args.id.upper())
+        elif args.command == "resend-result":
+            resend_result(args.id.upper())
         elif args.command == "resend-spec":
             folder = request_dir(args.id.upper())
             state = json.loads((folder / "status.json").read_text(encoding="utf-8"))

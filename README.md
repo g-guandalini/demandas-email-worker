@@ -198,10 +198,12 @@ Comandos úteis:
 python3 worker.py status DEM-AAAAMMDD-XXXXXXXX
 python3 worker.py resend-spec DEM-AAAAMMDD-XXXXXXXX
 python3 worker.py reanalyze DEM-AAAAMMDD-XXXXXXXX
+python3 worker.py resend-result DEM-AAAAMMDD-XXXXXXXX
 ```
 
 `resend-spec` reenvia o anexo da especificação que aguarda aprovação.
 `reanalyze` tenta novamente uma solicitação com status `erro_analise`; branches existentes apenas localmente são analisadas sem exigir publicação em `origin`.
+O status da implementação registra o envio do e-mail de conclusão. Se o SMTP falhar, o relatório continua salvo e pode ser reenviado com `resend-result`.
 
 ## Dados e segurança
 
