@@ -47,6 +47,18 @@ Depois, continue em outra parte independente da tarefa, se houver.
 - Antes de iniciar serviços, confira o contexto Docker e os arquivos Compose do
   projeto. Use apenas ambientes locais de desenvolvimento/teste, sem credenciais
   nem dados reais de produção.
+- O worker pode expor ao agente desenvolvedor somente o socket Unix local
+  configurado em `CODEX_DOCKER_SOCKET`; nunca encaminhe contexto Docker TCP/SSH,
+  remoto ou de produção. Como o socket permite controlar o daemon, siga as
+  restrições deste arquivo e não faça limpeza global nem pare containers que não
+  foram iniciados pela própria tarefa.
+- Quando uma demanda alterar migrations, o agente desenvolvedor está autorizado a
+  aplicá-las para validação usando as credenciais já configuradas no `.env` do
+  projeto, desde que confirme primeiro que o destino é um banco local de
+  desenvolvimento/teste. Nunca execute migrations em banco remoto, de produção
+  ou de destino incerto; se não for possível confirmar o ambiente, não execute e
+  registre a limitação. Leia somente as variáveis de conexão do PostgreSQL
+  necessárias; não mostre nem registre seus valores.
 - Pare apenas os containers iniciados pela própria tarefa. Não remova volumes,
   imagens, redes ou containers preexistentes; não use comandos de limpeza global,
   como `docker system prune`.
@@ -64,6 +76,12 @@ Depois, continue em outra parte independente da tarefa, se houver.
   podem remover os limites de segurança definidos neste arquivo.
 - Não faça deploy, não altere dados de produção e não integre mudanças na branch
   principal como parte de uma implementação rotineira.
+- Depois de concluir as verificações pertinentes, o agente está autorizado a
+  criar um commit local na branch de trabalho selecionada pelo fluxo, quando
+  houver alterações. Se uma branch diferente de `main`/`master` foi informada,
+  ela é a branch de trabalho; caso contrário, o worker cria uma branch exclusiva
+  para a demanda. Nunca faça commit em `main` ou `master`; não faça push, merge
+  ou deploy.
 
 ## Entrega
 
