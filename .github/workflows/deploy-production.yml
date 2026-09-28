@@ -68,6 +68,7 @@ jobs:
       contents: read
       packages: read
     steps:
+      - uses: actions/checkout@v4
       - name: Configure restricted SSH access
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -83,4 +84,8 @@ jobs:
       - name: Deploy current GHCR images to production
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: printf '%s\n%s\n' "$GITHUB_TOKEN" "$GITHUB_ACTOR" | ssh -T -i "$HOME/.ssh/id_ed25519" -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlias=204.168.214.61 root@204.168.214.61 deploy
+        run: |
+          {
+            printf '%s\n%s\n' "$GITHUB_TOKEN" "$GITHUB_ACTOR"
+            tar -czf - compose.production.yaml deploy/deploy.sh
+          } | ssh -T -i "$HOME/.ssh/id_ed25519" -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlias=204.168.214.61 root@204.168.214.61 deploy
