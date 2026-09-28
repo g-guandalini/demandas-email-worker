@@ -38,6 +38,10 @@ Depois, continue em outra parte independente da tarefa, se houver.
 ## Implementação
 
 - Siga a arquitetura, os nomes e as convenções já usados no repositório.
+- Uma demanda pode selecionar vários repositórios permitidos. O agente pode ler e
+  alterar somente os checkouts explicitamente listados pelo worker, mantendo cada
+  repositório em sua própria branch e criando commits locais separadamente.
+  Repositórios permitidos que não foram selecionados continuam fora do escopo.
 - Prefira alterações pequenas e diretamente ligadas à demanda.
 - Use o gerenciador de pacotes e os comandos definidos pelo projeto.
 - Acrescente ou ajuste testes quando eles verificarem comportamento relevante.

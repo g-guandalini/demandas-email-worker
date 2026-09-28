@@ -1,0 +1,9 @@
+FROM nginx:stable-alpine
+
+LABEL org.opencontainers.image.source="https://github.com/g-guandalini/demandas-email-worker"
+
+RUN apk add --no-cache openssl
+
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY deploy/nginx-auth.sh /docker-entrypoint.d/40-demandas-auth.sh
+RUN chmod 0555 /docker-entrypoint.d/40-demandas-auth.sh

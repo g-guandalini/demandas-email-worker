@@ -2,7 +2,8 @@
   "projects_root": "C:\\Users\\Usuario\\Projects",
   "projects": {
     "meu-projeto": "C:\\Users\\Usuario\\Projects\\meu-projeto",
-    "outro-projeto": "C:\\Users\\Usuario\\Projects\\outro-projeto"
+    "outro-projeto": "C:\\Users\\Usuario\\Projects\\outro-projeto",
+    "meus-workflows": "C:\\Users\\Usuario\\Projects\\meus-workflows"
   },
   "poll_seconds": 120,
   "max_email_bytes": 200000

@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from worker import (
     build_implementation_prompt,
+    build_email,
     create_analysis_worktree,
     demand_branch_name,
     ensure_worktree_commit,
@@ -52,6 +53,18 @@ class ResponseCommandTests(unittest.TestCase):
         self.assertIsNone(response_command(f"Oi\nANALISE {REQUEST_ID}\nNovos pontos"))
 
 
+class EmailCreationTests(unittest.TestCase):
+    def test_request_email_subject_is_not_marked_as_worker_notification(self):
+        with patch("worker.email_settings", return_value=("person@example.com", "unused")):
+            message = build_email("DEMANDA: Ajuste", "Projeto: projeto", bot_notification=False)
+        self.assertEqual(message["Subject"], "DEMANDA: Ajuste")
+
+    def test_worker_notifications_keep_the_bot_subject_prefix(self):
+        with patch("worker.email_settings", return_value=("person@example.com", "unused")):
+            message = build_email("Falha no worker", "Erro")
+        self.assertEqual(message["Subject"], "DEMANDAS BOT | Falha no worker")
+
+
 class ProjectPathTests(unittest.TestCase):
     def test_uses_configured_project_root(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -84,6 +97,32 @@ class RequestParsingTests(unittest.TestCase):
     def test_base_branch_is_optional(self):
         request = parse_request("Projeto: agente-ai\nTipo: task\nTítulo: Ajuste simples")
         self.assertIsNone(request["base_branch"])
+
+    def test_parses_multiple_repositories_with_individual_base_branches(self):
+        request = parse_request(
+            "Projetos: agente-ai, agente-ai-n8n-workflows\n"
+            "Tipo: feature\nTítulo: Fluxo completo\n"
+            "Branch base [agente-ai]: feature/api\n"
+            "Branch base [agente-ai-n8n-workflows]: main"
+        )
+        self.assertEqual(request["projects"], ["agente-ai", "agente-ai-n8n-workflows"])
+        self.assertEqual(
+            request["base_branches"],
+            {"agente-ai": "feature/api", "agente-ai-n8n-workflows": "main"},
+        )
+
+    def test_common_base_branch_applies_to_all_selected_repositories(self):
+        request = parse_request(
+            "Projetos: api, workflows\nTipo: task\nTítulo: Atualizar integração\nBranch base: feature/shared"
+        )
+        self.assertEqual(request["base_branches"], {"api": "feature/shared", "workflows": "feature/shared"})
+
+    def test_rejects_base_branch_for_unselected_repository(self):
+        with self.assertRaisesRegex(ValueError, "não está na lista"):
+            parse_request(
+                "Projetos: api, workflows\nTipo: task\nTítulo: Atualizar integração\n"
+                "Branch base [outro]: feature/shared"
+            )
 
     def test_branch_name_uses_only_lowercase_request_id(self):
         self.assertEqual(demand_branch_name(REQUEST_ID), "dem-20260924-c76eeed1")
@@ -244,6 +283,16 @@ class CodexCommandTests(unittest.TestCase):
         self.assertNotIn("--approve-for-me", command)
         self.assertEqual(child_env["CODEX_HOME"], str(Path.home() / ".codex"))
 
+    def test_extra_repositories_are_added_as_workspace_directories(self):
+        result = SimpleNamespace(returncode=0, stdout="ok\n", stderr="")
+        extra = Path("/tmp/other-project")
+        with patch.dict("os.environ", {"CODEX_BIN": "codex", "CODEX_HOME": ""}), patch(
+            "worker.subprocess.run", return_value=result
+        ) as run:
+            run_codex(Path("/tmp/project"), "prompt", "read-only", add_dirs=[extra])
+        command = run.call_args.args[0]
+        self.assertIn(["--add-dir", str(extra)], [command[index:index + 2] for index in range(len(command) - 1)])
+
     def test_auto_review_uses_its_own_workspace_write_sandbox(self):
         output, command, child_env = self.invoke_codex(True, "workspace-write")
         self.assertEqual(output, "ok")
@@ -271,10 +320,24 @@ class ImplementationPromptTests(unittest.TestCase):
         self.assertIn("Conteúdo integral da especificação", prompt)
         self.assertIn("Não tente abrir o arquivo original", prompt)
         self.assertNotIn("/home/gustavo/Projetos/DEMANDAS/solicitacoes", prompt)
-        self.assertIn("Branch de trabalho selecionada: feature/example", prompt)
+        self.assertIn("branch `feature/example`", prompt)
         self.assertIn("credenciais existentes no `.env`", prompt)
         self.assertIn("banco é local de desenvolvimento/teste", prompt)
         self.assertIn("/repo", prompt)
+
+    def test_prompt_lists_each_repository_and_its_branch(self):
+        repositories = {
+            "api": {"path": "/projects/api", "branch": "feature/api", "base_branch": "feature/api", "base_commit": "a" * 40},
+            "flows": {"path": "/projects/flows", "branch": "dem-123", "base_branch": "main", "base_commit": "b" * 40},
+        }
+        with patch("worker.workflow_instructions", return_value="Global rules"):
+            prompt = build_implementation_prompt(
+                REQUEST_ID, {"body": "Demand", "projects": ["api", "flows"]},
+                "feature/api", "Specification", repositories=repositories,
+            )
+        self.assertIn("- api: checkout `/projects/api`, branch `feature/api`", prompt)
+        self.assertIn("- flows: checkout `/projects/flows`, branch `dem-123`", prompt)
+        self.assertIn("todos os repositórios selecionados", prompt)
 
     def test_no_code_changes_can_complete_validation_without_a_commit(self):
         results = [
