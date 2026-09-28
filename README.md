@@ -1,13 +1,13 @@
 # Automação de demandas por e-mail
 
-Worker local que monitora uma caixa Gmail, pede ao Codex para analisar um repositório permitido e gerar uma especificação Markdown. A implementação só começa depois da aprovação explícita por e-mail.
+Worker local que monitora uma caixa Gmail, pede ao Codex para analisar um ou mais repositórios permitidos e gerar uma especificação Markdown. Também oferece um formulário web local que envia a demanda para a própria conta Gmail. A implementação só começa depois da aprovação explícita por e-mail.
 
 ## Como funciona
 
-1. Envie um e-mail da conta Gmail configurada para ela mesma com `Projeto`, `Tipo` e `Título` no corpo.
-2. O worker analisa o repositório permitido em modo somente leitura e envia a especificação como anexo Markdown.
+1. Envie um e-mail da conta Gmail configurada para ela mesma com `Projeto` ou `Projetos`, `Tipo` e `Título` no corpo, ou use a interface web local.
+2. O worker analisa todos os repositórios selecionados em modo somente leitura e envia a especificação como anexo Markdown.
 3. Responda com `ANALISE <ID>` e novos pontos para pedir uma revisão, ou `APROVAR <ID>` para iniciar a implementação.
-4. Após a aprovação, o worker usa diretamente a branch informada, exceto se ela for `main` ou `master`; nesses casos, cria uma branch exclusiva da demanda. O agente implementa, executa as verificações e cria um commit local na branch de trabalho quando houver alterações. O worker não faz push, merge ou deploy.
+4. Após a aprovação, cada branch selecionada é usada no respectivo repositório; bases `main`/`master` criam uma branch exclusiva da demanda. O agente implementa, executa as verificações e cria commits locais em cada checkout alterado. O worker não faz push, merge ou deploy.
 
 Cada demanda tem sua própria pasta `solicitacoes/<ID>/`. Revisões substituem a especificação corrente daquela demanda e guardam as versões anteriores em `historico/`.
 
@@ -69,7 +69,7 @@ Substitua o endereço de exemplo e preencha `GMAIL_APP_PASSWORD`. Se `codex` nã
 
 ### Repositórios permitidos
 
-`config.json` controla quais projetos podem ser escolhidos nos e-mails. Ele é local e ignorado pelo Git. Crie-o copiando o exemplo correspondente ao sistema:
+`config.json` controla quais projetos podem ser escolhidos nos e-mails e na interface web. Ele é local e ignorado pelo Git. Crie-o copiando o exemplo correspondente ao sistema:
 
 #### Linux
 
@@ -77,13 +77,14 @@ Substitua o endereço de exemplo e preencha `GMAIL_APP_PASSWORD`. Se `codex` nã
 cp config.example.json config.json
 ```
 
-Edite `projects_root` e os caminhos dos projetos. Os repositórios devem estar diretamente dentro da pasta indicada por `projects_root`. Exemplo fictício:
+Edite `projects_root` e os caminhos dos projetos. Os repositórios devem estar diretamente dentro da pasta indicada por `projects_root`. O worker pode receber N projetos na mesma demanda. Exemplo fictício:
 
 ```json
 {
   "projects_root": "/home/usuario/Projetos",
   "projects": {
-    "meu-projeto": "/home/usuario/Projetos/meu-projeto"
+    "meu-projeto": "/home/usuario/Projetos/meu-projeto",
+    "meus-workflows": "/home/usuario/Projetos/meus-workflows"
   },
   "poll_seconds": 120,
   "max_email_bytes": 200000
@@ -103,14 +104,37 @@ Use caminhos absolutos do Windows e ajuste `projects_root` para a pasta que cont
 {
   "projects_root": "C:\\Users\\Usuario\\Projects",
   "projects": {
-    "meu-projeto": "C:\\Users\\Usuario\\Projects\\meu-projeto"
+    "meu-projeto": "C:\\Users\\Usuario\\Projects\\meu-projeto",
+    "meus-workflows": "C:\\Users\\Usuario\\Projects\\meus-workflows"
   },
   "poll_seconds": 120,
   "max_email_bytes": 200000
 }
 ```
 
-Cada projeto precisa existir e conter um diretório `.git`. Os exemplos `config.example.json` e `config.example.windows.json` usam caminhos e nomes fictícios; não os use sem ajustá-los. Para adicionar um projeto, inclua uma chave em `projects` e use essa chave no campo `Projeto` do e-mail.
+Cada projeto precisa existir e conter um diretório `.git`. Os exemplos `config.example.json` e `config.example.windows.json` usam caminhos e nomes fictícios; não os use sem ajustá-los. Para adicionar um projeto, inclua uma chave em `projects` e use-a no campo `Projetos` do e-mail ou na interface web.
+
+### Interface web local
+
+Inicie o formulário com:
+
+```sh
+python3 worker.py web
+```
+
+Abra `http://127.0.0.1:8765`, selecione um ou mais repositórios, informe tipo, título, descrição e, opcionalmente, uma branch base para cada repositório. O formulário envia o pedido para a própria conta Gmail configurada; o worker o processará no próximo ciclo. O servidor escuta somente em `127.0.0.1` e não expõe a senha SMTP no navegador. Para acessá-lo de outro computador, use um túnel SSH para a máquina onde o worker está instalado; não exponha a porta diretamente à Internet.
+
+No Windows, inicie com `py -3 worker.py web`. Mantenha também `python3 worker.py run` (Linux) ou `py -3 worker.py run` (Windows) ativo em outro terminal para que o worker receba e processe o e-mail.
+
+### Publicação do formulário no VPS
+
+O deploy de produção publica somente o formulário de envio. O worker de e-mail, Codex, MCPs e clones de desenvolvimento continuam na máquina local; o VPS não recebe os arquivos de autenticação do Codex nem os repositórios. O formulário manda o pedido para a conta Gmail configurada, e o worker local continua processando a mensagem.
+
+O stack de produção usa containers e rede próprios: um container para o formulário e outro Nginx interno com autenticação Basic. Nenhum deles publica portas no host. O Nginx existente do VPS funciona como gateway HTTPS e encaminha `https://demandas.guandalini.uk` para o Nginx isolado. A rede externa `app_app-network` é usada somente para essa conexão entre os dois Nginx. No Cloudflare, crie `CNAME demandas -> agente.guandalini.uk` com proxy habilitado; o certificado Cloudflare Origin já instalado no VPS cobre `*.guandalini.uk`.
+
+O GitHub Actions constrói e valida as duas imagens em pull requests. Após merge em `main`, publica `ghcr.io/g-guandalini/demandas-email-worker` e `ghcr.io/g-guandalini/demandas-email-worker-nginx` e solicita ao VPS que atualize o stack. O token temporário de leitura do GHCR é enviado pelo canal SSH e removido depois do pull; não é salvo no VPS. Os dados de runtime ficam fora das imagens em `/opt/demandas/.env` e `/opt/demandas/config.json`; `.env` também guarda a senha de acesso à página e nunca deve ser versionado.
+
+Para inicializar o VPS uma vez, crie `/opt/demandas`, copie para lá `compose.production.yaml`, `.env`, `config.json` (somente as chaves permitidas, sem caminhos locais) e `deploy/deploy.sh`, configure a chave SSH de deploy restrita ao script e instale `deploy/edge-server.conf` em `/root/infra_agente/nginx/conf.d/demandas.conf`. Valide a configuração e recarregue o Nginx existente. O Actions usa os secrets `DEPLOY_SSH_KEY` e `DEPLOY_KNOWN_HOSTS`. O usuário e a senha da página são `DEMANDAS_WEB_USER` e `DEMANDAS_WEB_PASSWORD`. O workflow e a configuração ficam nos arquivos `compose.production.yaml`, `Dockerfile`, `Dockerfile.nginx` e `.github/workflows/deploy-production.yml`.
 
 ## Iniciar e testar
 
@@ -166,13 +190,27 @@ Observações:
 
 Tipos aceitos: `feature`/`funcionalidade`, `bug`/`erro`, `task`/`tarefa`, `chore`, `docs`/`documentacao` e `refactor`.
 
-`Branch base` é opcional. Sem esse campo, o worker localiza `main` ou `master`. Antes de cada análise, ele cria uma worktree temporária somente para leitura e executa `git pull --ff-only origin <branch>` nela; a análise usa o resultado atualizado. A branch padrão precisa estar disponível localmente e no remoto `origin`. Se não for possível atualizar em avanço linear, o worker para e registra o erro.
+Para trabalhar em vários repositórios na mesma demanda, use `Projetos` com as chaves separadas por vírgula. `Branch base` define uma base comum; para branches distintas use `Branch base [chave]`:
 
-Quando `Branch base` é informado, deve corresponder a uma branch **local existente** no repositório permitido. Se houver uma branch correspondente em `origin`, o worker executa `git pull --ff-only origin <branch>` na worktree temporária e analisa a versão atualizada. Se ela existir somente localmente, o worker analisa o commit local e informa essa origem no e-mail; falhas ao consultar o remoto continuam sendo tratadas como erro. Alterações ainda não commitadas não fazem parte da análise. Na aprovação, se a branch for diferente de `main`/`master`, o worker seleciona essa mesma branch no checkout clonado e atualiza por `origin` quando houver branch remota; se for somente local, continua a partir do commit local. O agente trabalha diretamente nela. Se a branch informada for `main` ou `master`, o worker exige a atualização remota e cria uma branch nova com o ID da demanda.
+```text
+Projetos: agente-ai, meus-workflows
+Tipo: feature
+Título: Isolar o processamento por conexão
+Branch base [agente-ai]: feature/minha-branch
+Branch base [meus-workflows]: main
 
-Na implementação, o agente trabalha diretamente na pasta configurada para o projeto em `config.json`. Antes de trocar de branch, o worker verifica se o checkout está limpo. Se houver alterações locais, ele interrompe a demanda sem trocar de branch ou tocar nesses arquivos. Depois da conclusão, o checkout permanece na branch utilizada para que você possa inspecionar e executar o projeto nesse mesmo diretório. Uma demanda que falhou e deixou alterações sem commit pode ser retomada nessa branch; outras demandas ficam bloqueadas até que o checkout esteja limpo.
+Atualizar o backend e os workflows para manter cada conversa associada à conexão correta.
+```
 
-Quando a implementação incluir migrations, o agente pode aplicá-las para validação usando as credenciais já configuradas no `.env` do projeto, somente após confirmar que o banco é local de desenvolvimento/teste. Para isso, pode ler apenas as variáveis de conexão necessárias no `.env` do checkout clonado; não deve mostrar nem registrar seus valores. Migrations nunca são executadas em banco remoto, de produção ou de destino incerto. Se o ambiente local não puder ser confirmado, o agente não executa a migration e registra essa limitação no resultado.
+As chaves precisam estar em `config.json`. Uma branch diferente de `main`/`master` é usada diretamente no respectivo repositório; `main`, `master` ou uma base em branco criam a branch da demanda naquele repositório.
+
+`Branch base` é opcional. Em pedidos com vários repositórios, `Branch base [chave]` permite escolher uma branch por repositório; um `Branch base` sem chave é aplicado a todos. Sem base informada, o worker resolve `main` ou `master` de cada repositório. Antes da análise, cria uma worktree somente para leitura por repositório e atualiza cada uma com `git pull --ff-only origin <branch>` quando a branch existe no remoto.
+
+Cada branch informada deve corresponder a uma branch **local existente** no respectivo repositório permitido. Se houver uma branch correspondente em `origin`, a análise usa a versão atualizada; se ela existir somente localmente, usa o commit local e informa a origem no e-mail. Alterações ainda não commitadas não fazem parte da análise. Na aprovação, branches diferentes de `main`/`master` são usadas diretamente em seus respectivos checkouts; branches principais ou bases vazias geram a branch da demanda naquele repositório.
+
+Na implementação, o agente recebe acesso de escrita somente aos checkouts selecionados na demanda, cada um em sua pasta e branch. O worker verifica todos os checkouts antes de trocar qualquer branch e interrompe a demanda se encontrar alterações locais não relacionadas. Depois, cada checkout permanece na branch utilizada para você inspecionar o resultado. Uma demanda que falhou pode ser retomada em suas branches; outros trabalhos ficam bloqueados nos checkouts que ainda tenham alterações sem commit.
+
+Quando a implementação incluir migrations, o agente pode aplicá-las para validação usando as credenciais já configuradas no `.env` de um repositório selecionado, somente após confirmar que o banco é local de desenvolvimento/teste. Pode ler apenas as variáveis de conexão necessárias; não deve mostrar nem registrar seus valores. Migrations nunca são executadas em banco remoto, de produção ou de destino incerto.
 
 Após receber o anexo `especificacao.md`, responda ao e-mail. A primeira linha não vazia deve ser um dos comandos a seguir, usando o ID real que aparece no e-mail:
 
@@ -213,7 +251,7 @@ O status da implementação registra o envio do e-mail de conclusão. Se o SMTP 
 
 - `.env`, `config.json`, `data/` e `solicitacoes/` são ignorados pelo Git. O estado `data/gmail-uid.json` deve ser preservado entre reinicializações para que mensagens antigas não sejam redetectadas.
 - Apenas mensagens enviadas pela conta configurada para ela mesma são processadas. Outros e-mails não são marcados como lidos.
-- O analista trabalha em modo somente leitura numa worktree temporária. O desenvolvedor altera o checkout clonado do projeto após a aprovação; o worker exige um checkout limpo antes de iniciar outra demanda.
+- O analista trabalha em worktrees temporárias somente para leitura. O desenvolvedor altera os checkouts selecionados após a aprovação; o worker exige que todos estejam limpos antes de iniciar outra demanda.
 - O agente pode criar um commit local na branch de trabalho escolhida pelo fluxo, depois das verificações e somente se houver alterações. Nunca faça commit em `main`/`master`; não faça push, merge, deploy ou alterações em dados de produção.
 - Migrations são permitidas somente em bancos locais de desenvolvimento/teste, conforme descrito acima.
 - Não inclua segredos nos pedidos. O conteúdo dos e-mails é tratado como entrada não confiável.

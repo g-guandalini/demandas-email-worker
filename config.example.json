@@ -2,7 +2,8 @@
   "projects_root": "/home/usuario/Projetos",
   "projects": {
     "meu-projeto": "/home/usuario/Projetos/meu-projeto",
-    "outro-projeto": "/home/usuario/Projetos/outro-projeto"
+    "outro-projeto": "/home/usuario/Projetos/outro-projeto",
+    "meus-workflows": "/home/usuario/Projetos/meus-workflows"
   },
   "poll_seconds": 120,
   "max_email_bytes": 200000
