@@ -13,4 +13,6 @@ mkdir -p /etc/nginx/auth
 password_hash="$(openssl passwd -apr1 "$DEMANDAS_WEB_PASSWORD")"
 umask 077
 printf '%s:%s\n' "$DEMANDAS_WEB_USER" "$password_hash" > /etc/nginx/auth/.htpasswd
+chown root:101 /etc/nginx/auth/.htpasswd
+chmod 0640 /etc/nginx/auth/.htpasswd
 unset DEMANDAS_WEB_PASSWORD password_hash
