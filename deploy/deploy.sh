@@ -22,5 +22,5 @@ unset registry_token registry_user
 
 export DOCKER_CONFIG="$docker_config"
 docker compose --env-file .env -f compose.production.yaml pull
-docker compose --env-file .env -f compose.production.yaml up -d --remove-orphans --wait
+docker compose --env-file .env -f compose.production.yaml up -d --wait
 docker compose --env-file .env -f compose.production.yaml ps
