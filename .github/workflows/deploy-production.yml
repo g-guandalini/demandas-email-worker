@@ -83,4 +83,4 @@ jobs:
       - name: Deploy current GHCR images to production
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: printf '%s\n%s\n' "$GITHUB_TOKEN" "$GITHUB_ACTOR" | ssh -T -i "$HOME/.ssh/id_ed25519" -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlias=204.168.214.61 root@guandalini.uk deploy
+        run: printf '%s\n%s\n' "$GITHUB_TOKEN" "$GITHUB_ACTOR" | ssh -T -i "$HOME/.ssh/id_ed25519" -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlias=204.168.214.61 root@204.168.214.61 deploy
