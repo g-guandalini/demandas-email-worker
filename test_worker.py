@@ -1,4 +1,5 @@
 import unittest
+import hashlib
 import subprocess
 import tempfile
 from pathlib import Path
@@ -22,6 +23,8 @@ from worker import (
     remove_analysis_worktree,
     validate_base_branch,
 )
+import web_server
+from web_server import mailbox_demands
 
 
 REQUEST_ID = "DEM-20260924-C76EEED1"
@@ -51,6 +54,102 @@ class ResponseCommandTests(unittest.TestCase):
 
     def test_command_must_be_first_nonempty_line(self):
         self.assertIsNone(response_command(f"Oi\nANALISE {REQUEST_ID}\nNovos pontos"))
+
+
+class MailboxDashboardTests(unittest.TestCase):
+    def setUp(self):
+        web_server.invalidate_mailbox_cache()
+
+    def test_dashboard_joins_request_and_spec_by_message_id_hash(self):
+        message_id = "<request-123@example.com>"
+        body = "Projetos: agente-ai\nTipo: feature\nTítulo: Novo recurso\n\nDetalhes da demanda"
+        suffix = hashlib.sha256(message_id.encode()).hexdigest()[:8].upper()
+        identifier = f"DEM-20260928-{suffix}"
+        demands = mailbox_demands([
+            {
+                "message_id": message_id,
+                "subject": "DEMANDA: Novo recurso",
+                "body": body,
+                "date": "Mon, 28 Sep 2026 10:00:00 -0300",
+                "attachments": [],
+            },
+            {
+                "message_id": "<spec@example.com>",
+                "subject": f"DEMANDAS BOT | {identifier}: especificação pronta",
+                "body": "A análise terminou.",
+                "date": "Mon, 28 Sep 2026 10:05:00 -0300",
+                "attachments": [{"filename": "especificacao.md", "text": "# Especificação"}],
+            },
+        ])
+        self.assertEqual(len(demands), 1)
+        self.assertEqual(demands[0]["id"], identifier)
+        self.assertEqual(demands[0]["title"], "Novo recurso")
+        self.assertEqual(demands[0]["status"], "aguardando_aprovacao")
+        self.assertEqual(demands[0]["spec"]["text"], "# Especificação")
+
+    def test_dashboard_marks_completed_demand_and_keeps_result_attachment(self):
+        identifier = REQUEST_ID
+        demands = mailbox_demands([{
+            "subject": f"DEMANDAS BOT | {identifier}: implementação concluída",
+            "body": "Para prosseguir",
+            "date": "Mon, 28 Sep 2026 10:05:00 -0300",
+            "attachments": [{"filename": "resultado.md", "text": "# Resultado"}],
+        }])
+        self.assertEqual(demands[0]["status"], "implementado")
+        self.assertEqual(demands[0]["result"]["text"], "# Resultado")
+
+    def test_dashboard_marks_a_demand_failure_from_its_notification(self):
+        identifier = REQUEST_ID
+        demands = mailbox_demands([{
+            "subject": f"DEMANDAS BOT | {identifier}: falha no worker",
+            "body": "Falha ao validar",
+            "date": "Mon, 28 Sep 2026 10:05:00 -0300",
+            "attachments": [],
+        }])
+        self.assertEqual(demands[0]["id"], identifier)
+        self.assertEqual(demands[0]["status"], "erro")
+
+    def test_dashboard_shows_approval_email_waiting_for_local_worker(self):
+        identifier = REQUEST_ID
+        demands = mailbox_demands([{
+            "subject": f"Re: DEMANDAS BOT | {identifier}: especificação pronta",
+            "body": f"APROVAR {identifier}",
+            "date": "Mon, 28 Sep 2026 10:05:00 -0300",
+            "attachments": [],
+        }])
+        self.assertEqual(demands[0]["status"], "aprovacao_enviada")
+
+    def test_dashboard_reuses_recent_mailbox_read_and_invalidates_after_send(self):
+        with patch("web_server.mailbox_messages", return_value=[]) as fetch:
+            self.assertEqual(web_server.current_demands(), [])
+            self.assertEqual(web_server.current_demands(), [])
+            fetch.assert_called_once()
+            web_server.invalidate_mailbox_cache()
+            web_server.current_demands()
+            self.assertEqual(fetch.call_count, 2)
+
+    def test_dashboard_list_keeps_attachment_names_but_not_markdown_bodies(self):
+        with patch("web_server.current_demands", return_value=[{
+            "id": REQUEST_ID,
+            "spec": {"filename": "especificacao.md", "text": "conteúdo longo"},
+            "result": None,
+        }]):
+            demands = web_server.dashboard_demands()
+        self.assertEqual(demands[0]["spec"], {"filename": "especificacao.md"})
+        self.assertIsNone(demands[0]["result"])
+
+    def test_gmail_search_includes_original_and_worker_notification_subjects(self):
+        class FakeMailbox:
+            def __init__(self):
+                self.subjects = []
+
+            def uid(self, command, *args):
+                self.subjects.append(args[-1])
+                return "OK", [b"1 2" if args[-1] == "DEMANDA:" else b"2 3"]
+
+        mailbox = FakeMailbox()
+        self.assertEqual(web_server.search_demand_uids(mailbox, "test@example.com"), [b"1", b"2", b"3"])
+        self.assertEqual(mailbox.subjects, ["DEMANDA:", '"DEMANDAS BOT"'])
 
 
 class EmailCreationTests(unittest.TestCase):

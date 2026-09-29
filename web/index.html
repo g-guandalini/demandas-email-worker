@@ -4,16 +4,54 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="worker-token" content="__CSRF_TOKEN__">
-  <title>Nova demanda · DEMANDAS</title>
+  <title>Demandas · DEMANDAS</title>
   <style>
     :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #f3f5f8; color: #172033; }
     * { box-sizing: border-box; }
     body { margin: 0; padding: 32px 16px; }
-    main { max-width: 780px; margin: 0 auto; }
+    main { max-width: 980px; margin: 0 auto; }
     header { margin-bottom: 24px; }
     h1 { margin: 0 0 8px; font-size: clamp(1.7rem, 4vw, 2.25rem); }
     header p { margin: 0; color: #5c667a; }
-    form, .panel { background: #fff; border: 1px solid #e0e5ed; border-radius: 14px; padding: 24px; box-shadow: 0 8px 28px #1c2e4a0b; }
+    form, .panel, .demand-card { background: #fff; border: 1px solid #e0e5ed; border-radius: 14px; padding: 24px; box-shadow: 0 8px 28px #1c2e4a0b; }
+    section { margin: 0 0 28px; }
+    .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .section-heading h2 { margin: 0; font-size: 1.3rem; }
+    .demand-list { display: grid; gap: 14px; }
+    .demand-card { padding: 18px 20px; }
+    .demand-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .demand-card h3 { margin: 0 0 6px; font-size: 1.08rem; overflow-wrap: anywhere; }
+    .demand-meta { color: #68748a; font-size: .9rem; margin: 0; overflow-wrap: anywhere; }
+    .status { white-space: nowrap; border-radius: 999px; padding: 5px 10px; font-size: .82rem; font-weight: 700; background: #eef1f5; color: #465165; }
+    .status.aguardando_aprovacao { background: #fff2cc; color: #805b00; }
+    .status.implementado { background: #e4f6eb; color: #17633a; }
+    .status.erro { background: #fff0ef; color: #9a2821; }
+    .demand-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .demand-actions button, .demand-actions a { text-decoration: none; border: 1px solid #cbd3df; border-radius: 8px; background: #fff; color: #21304c; padding: 9px 12px; font: inherit; font-size: .9rem; font-weight: 650; cursor: pointer; }
+    .demand-actions button.primary { color: white; border-color: #245bd3; background: #245bd3; }
+    .demand-actions button:hover, .demand-actions a:hover { border-color: #245bd3; }
+    .demand-actions button.primary:hover { background: #1949b4; }
+    .demand-actions button:disabled { opacity: .65; cursor: wait; }
+    .markdown-preview { margin-top: 14px; padding: 18px; max-height: 560px; overflow: auto; background: #f7f8fb; border: 1px solid #e0e5ed; border-radius: 8px; line-height: 1.6; overflow-wrap: anywhere; }
+    .markdown-preview[hidden] { display: none; }
+    .markdown-preview > :first-child { margin-top: 0; }
+    .markdown-preview > :last-child { margin-bottom: 0; }
+    .markdown-preview h1, .markdown-preview h2, .markdown-preview h3, .markdown-preview h4 { line-height: 1.3; margin: 1.25em 0 .55em; }
+    .markdown-preview p, .markdown-preview ul, .markdown-preview ol, .markdown-preview blockquote, .markdown-preview table, .markdown-preview pre { margin: .8em 0; }
+    .markdown-preview ul, .markdown-preview ol { padding-left: 1.6em; }
+    .markdown-preview blockquote { border-left: 3px solid #aab7ca; margin-left: 0; padding: 2px 0 2px 14px; color: #536078; }
+    .markdown-preview pre { padding: 14px; overflow: auto; border-radius: 8px; background: #172033; color: #f2f5fb; }
+    .markdown-preview code { font: .9em ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .markdown-preview :not(pre) > code { padding: 2px 5px; border-radius: 4px; background: #e8edf5; }
+    .markdown-preview table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
+    .markdown-preview th, .markdown-preview td { border: 1px solid #cbd3df; padding: 7px 10px; text-align: left; }
+    .markdown-preview th { background: #edf1f7; }
+    .markdown-preview a { color: #245bd3; }
+    .markdown-preview hr { border: 0; border-top: 1px solid #cbd3df; margin: 1.2em 0; }
+    .action-form { margin-top: 14px; }
+    .action-form[hidden], .spec-preview[hidden] { display: none; }
+    .action-form textarea { min-height: 120px; }
+    .empty { color: #68748a; margin: 0; }
     .field { margin-bottom: 20px; }
     label, legend { display: block; margin-bottom: 8px; font-weight: 650; }
     input, select, textarea { width: 100%; border: 1px solid #cbd3df; border-radius: 8px; padding: 11px 12px; color: inherit; background: #fff; font: inherit; }
@@ -39,9 +77,18 @@
 <body>
   <main>
     <header>
-      <h1>Nova demanda</h1>
-      <p>Preencha os detalhes. O worker enviará o pedido para sua própria caixa de entrada para iniciar a análise.</p>
+      <h1>Demandas</h1>
+      <p>Acompanhe as mensagens do Gmail, revise as especificações e envie comandos para o worker local.</p>
     </header>
+    <section aria-labelledby="demands-title">
+      <div class="section-heading">
+        <h2 id="demands-title">Suas demandas</h2>
+        <button id="refresh-demands" type="button">Atualizar</button>
+      </div>
+      <div id="demands" class="demand-list" aria-live="polite"><div class="panel">Consultando o Gmail…</div></div>
+    </section>
+    <section aria-labelledby="new-demand-title">
+    <div class="section-heading"><h2 id="new-demand-title">Nova demanda</h2></div>
     <form id="demand-form">
       <fieldset class="field">
         <legend>Repositórios</legend>
@@ -70,12 +117,222 @@
       <button id="submit" type="submit">Enviar para análise</button>
       <div id="message" role="status" aria-live="polite"></div>
     </form>
+    </section>
   </main>
   <script>
     const token = document.querySelector('meta[name="worker-token"]').content;
     const projectBox = document.querySelector('#projects');
     const messageBox = document.querySelector('#message');
     const button = document.querySelector('#submit');
+    const demandsBox = document.querySelector('#demands');
+
+    const statusLabels = {
+      aguardando_worker: 'Aguardando resposta do worker',
+      aguardando_aprovacao: 'Aguardando aprovação',
+      aprovacao_enviada: 'Aprovação enviada; aguardando worker',
+      reanalisando: 'Nova análise solicitada',
+      implementado: 'Concluída',
+      erro: 'Falha no processamento'
+    };
+
+    function appendInline(parent, source) {
+      const pattern = /(!?)\[([^\]]+)\]\(([^)\s]+)(?:\s+["']([^"']*)["'])?\)|`([^`]+)`|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_|~~(.+?)~~/g;
+      let cursor = 0;
+      for (const match of source.matchAll(pattern)) {
+        if (match.index > cursor) parent.append(document.createTextNode(source.slice(cursor, match.index)));
+        let node;
+        if (match[2] !== undefined) {
+          if (match[1]) {
+            node = document.createElement('span');
+            node.textContent = `Imagem: ${match[2]}`;
+          } else {
+            let safeUrl;
+            try {
+              const parsed = new URL(match[3], window.location.href);
+              if (parsed.protocol === 'https:' || parsed.protocol === 'http:') safeUrl = parsed.href;
+            } catch (_) { /* Render unsafe or malformed destinations as plain text. */ }
+            if (safeUrl) {
+              node = document.createElement('a'); node.href = safeUrl; node.textContent = match[2];
+              node.target = '_blank'; node.rel = 'noopener noreferrer';
+              if (match[4]) node.title = match[4];
+            } else {
+              node = document.createTextNode(match[0]);
+            }
+          }
+        } else if (match[5] !== undefined) {
+          node = document.createElement('code'); node.textContent = match[5];
+        } else if (match[6] !== undefined || match[7] !== undefined) {
+          node = document.createElement('strong'); node.textContent = match[6] ?? match[7];
+        } else if (match[8] !== undefined || match[9] !== undefined) {
+          node = document.createElement('em'); node.textContent = match[8] ?? match[9];
+        } else {
+          node = document.createElement('del'); node.textContent = match[10];
+        }
+        parent.append(node);
+        cursor = match.index + match[0].length;
+      }
+      if (cursor < source.length) parent.append(document.createTextNode(source.slice(cursor)));
+    }
+
+    function renderMarkdown(container, markdown) {
+      const lines = markdown.replace(/\r\n?/g, '\n').split('\n');
+      container.replaceChildren();
+      let index = 0;
+      const isBlockStart = (line) => /^\s*(#{1,6}\s|```|~~~|>|[-*+]\s+|\d+[.)]\s+|(?:---+|___+|\*\*\*+)\s*$)/.test(line);
+      while (index < lines.length) {
+        const line = lines[index];
+        if (!line.trim()) { index++; continue; }
+
+        const fence = line.match(/^\s*(```+|~~~+)(.*)$/);
+        if (fence) {
+          const code = [];
+          index++;
+          while (index < lines.length && !new RegExp(`^\\s*${fence[1][0]}{${fence[1].length},}\\s*$`).test(lines[index])) code.push(lines[index++]);
+          if (index < lines.length) index++;
+          const pre = document.createElement('pre'); const codeNode = document.createElement('code');
+          codeNode.textContent = code.join('\n'); pre.append(codeNode); container.append(pre); continue;
+        }
+
+        const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
+        if (heading) {
+          const node = document.createElement(`h${heading[1].length}`); appendInline(node, heading[2]); container.append(node); index++; continue;
+        }
+        if (/^\s*(?:---+|___+|\*\*\*+)\s*$/.test(line)) {
+          container.append(document.createElement('hr')); index++; continue;
+        }
+
+        const tableDelimiter = index + 1 < lines.length && /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[index + 1]);
+        if (line.includes('|') && tableDelimiter) {
+          const cells = (value) => value.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+          const table = document.createElement('table'); const head = document.createElement('thead'); const headRow = document.createElement('tr');
+          for (const text of cells(line)) { const th = document.createElement('th'); appendInline(th, text); headRow.append(th); }
+          head.append(headRow); table.append(head); index += 2;
+          const body = document.createElement('tbody');
+          while (index < lines.length && lines[index].includes('|') && lines[index].trim()) {
+            const row = document.createElement('tr');
+            for (const text of cells(lines[index])) { const td = document.createElement('td'); appendInline(td, text); row.append(td); }
+            body.append(row); index++;
+          }
+          table.append(body); container.append(table); continue;
+        }
+
+        if (/^\s*>/.test(line)) {
+          const quote = [];
+          while (index < lines.length && /^\s*>/.test(lines[index])) quote.push(lines[index++].replace(/^\s*>\s?/, ''));
+          const node = document.createElement('blockquote'); const paragraph = document.createElement('p'); appendInline(paragraph, quote.join(' ')); node.append(paragraph); container.append(node); continue;
+        }
+
+        const listMatch = line.match(/^\s*(?:([-*+])|(\d+)[.)])\s+(.+)$/);
+        if (listMatch) {
+          const ordered = Boolean(listMatch[2]); const list = document.createElement(ordered ? 'ol' : 'ul');
+          if (ordered && Number(listMatch[2]) !== 1) list.start = Number(listMatch[2]);
+          while (index < lines.length) {
+            const item = lines[index].match(/^\s*(?:([-*+])|(\d+)[.)])\s+(.+)$/);
+            if (!item || Boolean(item[2]) !== ordered) break;
+            const li = document.createElement('li'); appendInline(li, item[3]); list.append(li); index++;
+          }
+          container.append(list); continue;
+        }
+
+        const paragraphLines = [];
+        while (index < lines.length && lines[index].trim()) {
+          const beginsTable = lines[index].includes('|') && index + 1 < lines.length
+            && /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[index + 1]);
+          if (paragraphLines.length && (isBlockStart(lines[index]) || beginsTable)) break;
+          paragraphLines.push(lines[index++]);
+        }
+        const paragraph = document.createElement('p'); appendInline(paragraph, paragraphLines.join(' ')); container.append(paragraph);
+      }
+    }
+
+    async function loadDemands() {
+      demandsBox.replaceChildren(Object.assign(document.createElement('div'), { className: 'panel', textContent: 'Consultando o Gmail…' }));
+      try {
+        const response = await fetch('api/demands', { cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Não foi possível carregar as demandas.');
+        demandsBox.replaceChildren();
+        if (!data.demands.length) {
+          demandsBox.append(Object.assign(document.createElement('div'), { className: 'panel empty', textContent: 'Nenhuma demanda encontrada na caixa de entrada.' }));
+          return;
+        }
+        for (const demand of data.demands) {
+          const card = document.createElement('article'); card.className = 'demand-card';
+          const top = document.createElement('div'); top.className = 'demand-top';
+          const details = document.createElement('div');
+          const title = document.createElement('h3'); title.textContent = demand.title || demand.id || 'Demanda';
+          const meta = document.createElement('p'); meta.className = 'demand-meta';
+          meta.textContent = [demand.id, demand.projects.join(', '), demand.type, demand.received_at].filter(Boolean).join(' · ');
+          details.append(title, meta);
+          const badge = document.createElement('span'); badge.className = `status ${demand.status}`; badge.textContent = statusLabels[demand.status] || demand.status;
+          top.append(details, badge); card.append(top);
+
+          const actions = document.createElement('div'); actions.className = 'demand-actions';
+          for (const [kind, label] of [['spec', 'Baixar análise .md'], ['result', 'Baixar resultado .md']]) {
+            if (!demand[kind]) continue;
+            const link = document.createElement('a'); link.href = `api/demands/${encodeURIComponent(demand.id)}/markdown/${kind}`; link.textContent = label;
+            actions.append(link);
+          }
+          const previews = [];
+          for (const [kind, label] of [['spec', 'análise'], ['result', 'resultado']]) {
+            if (!demand[kind]) continue;
+            const previewButton = document.createElement('button'); previewButton.type = 'button'; previewButton.textContent = `Exibir ${label}`;
+            const preview = document.createElement('div'); preview.className = 'markdown-preview'; preview.hidden = true;
+            let previewLoaded = false;
+            previewButton.addEventListener('click', async () => {
+              if (previewLoaded) {
+                preview.hidden = !preview.hidden;
+                previewButton.textContent = preview.hidden ? `Exibir ${label}` : `Ocultar ${label}`;
+                return;
+              }
+              preview.hidden = false; preview.textContent = `Carregando ${label}…`; previewButton.disabled = true;
+              try {
+                const response = await fetch(`api/demands/${encodeURIComponent(demand.id)}/markdown/${kind}?preview=1`, { cache: 'no-store' });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || `Não foi possível carregar o ${label}.`);
+                renderMarkdown(preview, data.text); previewLoaded = true; previewButton.textContent = `Ocultar ${label}`;
+              } catch (error) { preview.textContent = error.message; }
+              finally { previewButton.disabled = false; }
+            });
+            actions.append(previewButton); previews.push(preview);
+          }
+          card.append(actions, ...previews);
+
+          if (demand.status === 'aguardando_aprovacao') {
+            const approve = document.createElement('button'); approve.type = 'button'; approve.className = 'primary'; approve.textContent = 'APROVAR';
+            approve.addEventListener('click', () => sendDemandCommand(demand.id, 'approve', '', approve));
+            const reanalyze = document.createElement('button'); reanalyze.type = 'button'; reanalyze.textContent = 'ANALISAR NOVAMENTE';
+            const form = document.createElement('form'); form.className = 'action-form'; form.hidden = true;
+            const notes = document.createElement('textarea'); notes.required = true; notes.maxLength = 20000; notes.placeholder = 'Descreva os pontos novos, correções ou dúvidas para a próxima análise.';
+            const send = document.createElement('button'); send.type = 'submit'; send.className = 'primary'; send.textContent = 'Enviar para nova análise';
+            form.append(notes, send);
+            reanalyze.addEventListener('click', () => { form.hidden = !form.hidden; });
+            form.addEventListener('submit', (event) => { event.preventDefault(); sendDemandCommand(demand.id, 'reanalyze', notes.value, send); });
+            actions.append(approve, reanalyze); card.append(form);
+          }
+          const feedback = document.createElement('p'); feedback.className = 'hint'; feedback.setAttribute('aria-live', 'polite');
+          card.append(feedback); demandsBox.append(card);
+        }
+      } catch (error) {
+        demandsBox.replaceChildren(Object.assign(document.createElement('div'), { className: 'panel', textContent: error.message }));
+      }
+    }
+
+    async function sendDemandCommand(id, action, notes, control) {
+      const card = control.closest('.demand-card');
+      const feedback = card.querySelector('[aria-live="polite"]');
+      control.disabled = true; feedback.textContent = 'Enviando e-mail…';
+      try {
+        const response = await fetch(`api/demands/${encodeURIComponent(id)}/command`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Worker-Token': token },
+          body: JSON.stringify({ action, notes })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Não foi possível enviar o comando.');
+        feedback.textContent = data.message;
+        card.querySelectorAll('button').forEach((item) => { item.disabled = true; });
+      } catch (error) { feedback.textContent = error.message; control.disabled = false; }
+    }
 
     async function loadProjects() {
       try {
@@ -134,7 +391,9 @@
       finally { button.disabled = false; button.textContent = 'Enviar para análise'; }
     });
 
+    document.querySelector('#refresh-demands').addEventListener('click', loadDemands);
     loadProjects();
+    loadDemands();
   </script>
 </body>
 </html>
