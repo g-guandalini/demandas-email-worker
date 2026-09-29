@@ -1216,8 +1216,18 @@ def poll_once() -> int:
                 print(f"Falha ao processar UID {uid.decode(errors='replace')}: {exc}", file=sys.stderr)
                 # Falhas de agentes ficam registradas e exigem novo e-mail/aprovação
                 # para nova tentativa; não repete chamadas pagas a cada polling.
+                failed_identifier = None
+                command = response_command(data.get("body", ""))
+                if command:
+                    failed_identifier = command[1]
+                elif has_request_fields(data.get("body", "")):
+                    suffix = hashlib.sha256((data.get("message_id") or data.get("body", "")).encode("utf-8")).hexdigest()[:8].upper()
+                    matches = sorted(REQUESTS.glob(f"DEM-*-{suffix}")) if REQUESTS.exists() else []
+                    if matches:
+                        failed_identifier = matches[-1].name
+                subject = f"{failed_identifier}: falha no worker" if failed_identifier else "Falha no worker"
                 try:
-                    send_email("Falha no worker", f"Não foi possível processar uma mensagem.\n\nErro: {exc}\n\nConfira o log do serviço e o estado em solicitacoes/.")
+                    send_email(subject, f"Não foi possível processar uma mensagem{f' da demanda {failed_identifier}' if failed_identifier else ''}.\n\nErro: {exc}\n\nConfira o log do serviço e o estado em solicitacoes/.")
                 except Exception as notify_error:
                     print(f"Também não foi possível enviar aviso: {notify_error}", file=sys.stderr)
                 mailbox.uid("store", uid, "+FLAGS", "(\\Seen)")
